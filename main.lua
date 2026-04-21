@@ -29,27 +29,12 @@ reroll_selected = false
 weapon_card = nil
 kills = {}
 
-cursor_x = 0
-cursor_y = 0
+cursor_x = -10
+cursor_y = 120
 cursor_target_x = 0
 cursor_target_y = 0
 
-function render_card(card)
-    local x, y = card.current_x, card.current_y
-    local tl_x, tl_y = center_spr(x, y, 3, 4)
-    spr(card.face_down and 64 or 1, tl_x, tl_y, 3, 4)
-
-    if (not card.face_down) then
-        spr(suit_spr[card.suit], tl_x + 2, tl_y + 2 )
-
-        local icon_tl_x, icon_tl_y = center_spr(x, y, 1, 1)
-        spr(type_spr[card:type()], icon_tl_x, icon_tl_y)
-
-        print(card.rank, tl_x + 10, tl_y + 4, suit_color[card.suit])
-
-        print(card.value, tl_x + 2, tl_y + 4 * 8 - 8, 13)
-    end
-end
+function render_card_callback(card) card:render() end
 
 function render_cursor()
     local card = dungeon[selected_index]
@@ -129,6 +114,17 @@ function reroll_dungeon()
     rerolled_recently = true
 end
 
+bg_offset = 0
+function draw_background()
+    local sx, sy = get_coords_for_sspr(67)
+    for y = 0, 4 do
+        for x = 0, 4 do
+            sspr(sx, sy, 32, 32, x * 32 - bg_offset % 32, y * 32 - bg_offset % 32)
+        end
+    end
+end
+
+
 attack_mode_data = {
     is_choosing = false,
     card = nil,
@@ -136,97 +132,185 @@ attack_mode_data = {
     choices = {'weapon', 'barehand', 'cancel'}
 }
 
-current_state = 'menu'
-menu_state = {
+attack_mode_choice_state = {
     update = function ()
-        if btn(🅾️) or btn(❎) then
-            create_dungeon()
-            current_state = 'dungeon'
+        local i = attack_mode_data.choice_index
+        local card = dungeon[selected_index]
+        if (btnp(➡️)) then
+            attack_mode_data.choice_index = (i + 1 > count(attack_mode_data.choices)) and 1 or i + 1
+        elseif (btnp(⬅️)) then
+            attack_mode_data.choice_index = (i - 1 < 1) and count(attack_mode_data.choices) or i - 1
+        end
+        if (btnp(❎)) then
+            local choice = attack_mode_data.choices[attack_mode_data.choice_index]
+            if (choice == 'weapon') then
+                health -= max(attack_mode_data.card.value - weapon_card.value, 0)
+                add(kills, attack_mode_data.card)
+
+                remove_selected_from_dungeon()
+            elseif (choice == 'barehand') then
+                local damage = card.value
+                health -= damage
+
+                add_to_discard(card)
+                remove_selected_from_dungeon()
+            end
+
+            pop_state()
+        end
+    end,
+    draw = function ()
+        local choice = attack_mode_data.choices[attack_mode_data.choice_index]
+
+        local offset_map = { -14, 0, 14 }
+
+        local offset = offset_map[attack_mode_data.choice_index]
+        local tl_x, tl_y = center_spr(64, 64, 1, 1)
+
+        local backdrop_tl_x, backdrop_tl_y = tl_x - 14 - 2, tl_y - 2
+        local backdrop_br_x, backdrop_br_y = tl_x + 21 + 2, tl_y + 9
+
+        rectfill(backdrop_tl_x, backdrop_tl_y, backdrop_br_x, backdrop_br_y, 3)
+        rectfill(tl_x + offset - 3,
+            tl_y - 3,
+            tl_x + offset + 10, 
+            tl_y + 8 + 2, 11)
+        spr(8, tl_x - 14, tl_y)
+        spr(24, tl_x, tl_y)
+        spr(25, tl_x + 14, tl_y)
+
+        rect(tl_x + offset - 3,
+            tl_y - 3,
+            tl_x + offset + 10, 
+            tl_y + 8 + 2, 9)
+    end
+}
+
+menu_state = {
+    init = function ()
+        title = {
+            128,
+            130,
+            132,
+            134,
+            136,
+            138,
+            140,
+            142,
+            160,
+        }
+        
+    end,
+    update = function ()
+        if btn(🅾️) or btn(❎) or btn(⬆️) or btn(⬇️) or btn(⬅️) or btn(➡️) then
+            pop_state()
+            push_state(dungeon_state)
         end 
     end,
     draw = function ()
-        print("scoundrel", 32, 64, 0)
+
+        for i, spr_n in ipairs(title) do
+            local x, y = get_coords_for_sspr(spr_n)
+            sspr(
+                x,
+                y,
+                16,
+                16,
+                6 + (i - 1) * 12,
+                32 + flr(sin((t() + i)/6) * 4)
+            )
+        end
+
+        -- print("scoundrel", 32, 64, 0)
+        print("press any key to begin", 20, 84, 7)
     end
 }
 dungeon_state = {
+    init = function ()
+
+        music(0, 2000)
+
+        local ranks = {'j', 'q', 'k', 'a'}
+        local suits = {'c', 'd', 'h', 's'}
+        for v = 2,10 do
+            add(ranks, ''..v)
+        end
+
+        foreach(suits, function (suit)
+            foreach(ranks, function (rank)
+                if (suit == 'd' or suit == 'h') and (rank == 'a' or rank == 'j' or rank == 'q' or rank == 'k') then
+                    return
+                end
+                local card = Card:new(rank, suit)
+                card.current_x = 20
+                card.current_y = 90
+                card.target_x = 20
+                card.target_y = 90
+                card.face_down = true
+                add(cards, card)
+            end)
+        end)
+        shuffle(cards)
+        create_dungeon()
+    end,
     update = function ()
         local card = dungeon[selected_index] 
-        if (attack_mode_data.is_choosing) then
-            local i = attack_mode_data.choice_index
-            if (btnp(⬇️)) then
-                attack_mode_data.choice_index = (i + 1 > count(attack_mode_data.choices)) and 1 or i + 1
-            elseif (btnp(⬆️)) then
-                attack_mode_data.choice_index = (i - 1 < 1) and count(attack_mode_data.choices) or i - 1
-            end
-            if (btnp(❎)) then
-                local choice = attack_mode_data.choices[attack_mode_data.choice_index]
-                if (choice == 'weapon') then
-                    health -= max(attack_mode_data.card.value - weapon_card.value, 0)
-                    add(kills, attack_mode_data.card)
+        if (btnp(⬅️)) then
+            selected_index = (selected_index - 1 < 1) and count(dungeon) or selected_index - 1
+            sfx(2)
+        end
 
-                    remove_selected_from_dungeon()
-                elseif (choice == 'barehand') then
+        if (btnp(➡️)) then
+            selected_index = (selected_index + 1 > count(dungeon)) and 1 or selected_index + 1
+            sfx(2)
+        end
+
+        if (btnp(⬇️)) then
+            reroll_selected = true
+        end
+        if (btnp(⬆️)) then
+            reroll_selected = false
+        end
+        reroll_selected = reroll_selected and not rerolled_recently and count(dungeon) == 4
+
+        if (btnp(❎) and card and not reroll_selected) then
+            local type = card:type()
+            if (type == 'weapon') then
+                equip_weapon(card)
+
+                remove_selected_from_dungeon()
+            elseif (type == 'potion') then
+                if not potion_used then
+                    health = min(health + card.value, 20)
+                end
+
+                -- update dungeon
+                add_to_discard(card)
+                remove_selected_from_dungeon()
+
+                sfx(3)
+
+                potion_used = true
+            else
+                local can_use_weapon = weapon_card and (count(kills) == 0 or kills[count(kills)].value > card.value)
+                if can_use_weapon then
+                    attack_mode_data.is_choosing = true
+                    attack_mode_data.card = card
+                    attack_mode_data.choice_index = 1
+                    push_state(attack_mode_choice_state)
+                else
                     local damage = card.value
                     health -= damage
 
                     add_to_discard(card)
                     remove_selected_from_dungeon()
                 end
-                attack_mode_data.is_choosing = false
+
             end
-        else
-            if (btnp(⬅️)) then
-                selected_index = (selected_index - 1 < 1) and count(dungeon) or selected_index - 1
-            end
-
-            if (btnp(➡️)) then
-                selected_index = (selected_index + 1 > count(dungeon)) and 1 or selected_index + 1
-            end
-
-            if (btnp(⬇️)) then
-                reroll_selected = true
-            end
-            if (btnp(⬆️)) then
-                reroll_selected = false
-            end
-            reroll_selected = reroll_selected and not rerolled_recently and count(dungeon) == 4
-
-            if (btnp(❎) and card and not reroll_selected) then
-                local type = card:type()
-                if (type == 'weapon') then
-                    equip_weapon(card)
-
-                    remove_selected_from_dungeon()
-                elseif (type == 'potion') then
-                    if not potion_used then
-                        health = min(health + card.value, 20)
-                    end
-
-                    -- update dungeon
-                    add_to_discard(card)
-                    remove_selected_from_dungeon()
-
-                    potion_used = true
-                else
-                    local can_use_weapon = weapon_card and (count(kills) == 0 or kills[count(kills)].value > card.value)
-                    if can_use_weapon then
-                        attack_mode_data.is_choosing = true
-                        attack_mode_data.card = card
-                        attack_mode_data.choice_index = 1
-                    else
-                        local damage = card.value
-                        health -= damage
-
-                        add_to_discard(card)
-                        remove_selected_from_dungeon()
-                    end
-
-                end
-            elseif (btnp(❎) and reroll_selected) then
-                reroll_dungeon()
-            end
-
+        elseif (btnp(❎) and reroll_selected) then
+            reroll_dungeon()
         end
+
 
         if (count(dungeon) == 1) then
             refresh_dungeon()
@@ -236,12 +320,11 @@ dungeon_state = {
             if not card then return end
             if (card.delay > 0) then
                 card.delay -= 1
-                i += 1
-                return
+            else
+                local target_x, target_y = get_card_slot_position(i)
+                card.current_x = lerp(card.current_x, target_x, 0.2)
+                card.current_y = lerp(card.current_y, target_y, 0.2)
             end
-            local target_x, target_y = get_card_slot_position(i)
-            card.current_x = lerp(card.current_x, target_x, 0.2)
-            card.current_y = lerp(card.current_y, target_y, 0.2)
         end
 
         cursor_target_x = card.current_x
@@ -265,13 +348,13 @@ dungeon_state = {
         foreach(cards, function (card) card:update() end)
     end,
     draw = function ()
-        foreach(dungeon, render_card)
-        foreach(discards, render_card)
-        foreach(cards, render_card)
+        foreach(dungeon, render_card_callback)
+        foreach(discards, render_card_callback)
+        foreach(cards, render_card_callback)
 
         if (weapon_card) then
-            render_card(weapon_card)
-            foreach(kills, render_card)
+            weapon_card:render()
+            foreach(kills, render_card_callback)
         end
 
         if not reroll_selected then
@@ -283,51 +366,39 @@ dungeon_state = {
             print("Reroll", 100, 54, reroll_selected and 9 or 5)
         end
 
-        if (attack_mode_data.is_choosing) then
-            print("Use weapon?", 56, 60, attack_mode_data.choices[attack_mode_data.choice_index] == 'weapon' and 9 or 5)
-            print("Use barehand?", 56, 68, attack_mode_data.choices[attack_mode_data.choice_index] == 'barehand' and 9 or 5)
-            print("Cancel", 56, 76, attack_mode_data.choices[attack_mode_data.choice_index] == 'cancel' and 9 or 5)
-        end
-
-        print("HP:"..health, 4, 120, 5)
+        print("HP:"..health, 4, 112, 8)
+        rect(4, 120, 4 + 20, 124, 5)
+        rectfill(4, 120, 4 + health, 124, 8)
     end
 }
-states = {
-    menu = menu_state,
-    dungeon = dungeon_state,
-}
+states = {}
+
+function push_state(s)
+  if s.init then s.init() end
+  add(states, s)
+end
+
+function pop_state()
+  deli(states, #states)
+end
+
 
 function _init()
-    local ranks = {'j', 'q', 'k', 'a'}
-    local suits = {'c', 'd', 'h', 's'}
-    for v = 2,10 do
-        add(ranks, ''..v)
-    end
-
-    foreach(suits, function (suit)
-        foreach(ranks, function (rank)
-            if (suit == 'd' or suit == 'h') and (rank == 'a' or rank == 'j' or rank == 'q' or rank == 'k') then
-                return
-            end
-            local card = Card:new(rank, suit)
-            card.current_x = 20
-            card.current_y = 90
-            card.target_x = 20
-            card.target_y = 90
-            card.face_down = true
-            add(cards, card)
-        end)
-    end)
-    shuffle(cards)
+    push_state(menu_state)
 end
 
 
 function _update ()
-    states[current_state].update()
+    local current = states[#states]
+    -- bg_offset += 0.15
+    if current and current.update then current.update() end
 end
-
 
 function _draw()
     cls(1)
-    states[current_state].draw()
+    draw_background()
+
+    for s in all(states) do
+        if s.draw then s.draw() end
+    end
 end

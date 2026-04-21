@@ -39,7 +39,22 @@ function Card:update()
     self.current_y = lerp(self.current_y, self.target_y, 0.2)
 end
 
--- Usage
--- local myAcc = Account:new(100)
--- myAcc:deposit(50)
--- print(myAcc.balance) -- Output: 150
+function Card:render()
+    local x, y = self.current_x, self.current_y
+    local tl_x, tl_y = center_spr(x, y, 3, 4)
+
+    local spr_n = self.face_down and 64 or 1
+    spr(spr_n, tl_x, tl_y, 3, 4)
+
+    if (not self.face_down) then
+        spr(suit_spr[self.suit], tl_x + 2, tl_y + 2 )
+
+        local icon_tl_x, icon_tl_y = center_spr(x, y, 1, 1)
+        spr(type_spr[self:type()], icon_tl_x, icon_tl_y)
+
+        print(self.rank, tl_x + 10, tl_y + 4, suit_color[self.suit])
+
+        print(self.value, tl_x + 2, tl_y + 4 * 8 - 8, 13)
+    end
+
+end
