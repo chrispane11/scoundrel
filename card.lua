@@ -30,6 +30,15 @@ function Card:type()
     return types[self.suit] or 'monster'
 end
 
+function Card:update()
+    if (self.delay > 0) then
+        self.delay -= 1
+        return
+    end
+    self.current_x = lerp(self.current_x, self.target_x, 0.2)
+    self.current_y = lerp(self.current_y, self.target_y, 0.2)
+end
+
 -- Usage
 -- local myAcc = Account:new(100)
 -- myAcc:deposit(50)

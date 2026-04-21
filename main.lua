@@ -85,7 +85,7 @@ end
 function create_dungeon()
     for i = 1,4 do
         local card = draw_card()
-        card.delay = (i - 1) * 5
+        card.delay = (i - 1) * 3
         add(dungeon, card)
     end
 end
@@ -108,32 +108,6 @@ function add_to_discard(card)
     card.target_y = 80
 end
 
-function _init()
-    poke(0x5f2c,0x40)
-    -- Create the deck (w/o some cards)
-    local ranks = {'j', 'q', 'k', 'a'}
-    local suits = {'c', 'd', 'h', 's'}
-    for v = 2,10 do
-        add(ranks, ''..v)
-    end
-
-    foreach(suits, function (suit)
-        foreach(ranks, function (rank)
-            if (suit == 'd' or suit == 'h') and (rank == 'a' or rank == 'j' or rank == 'q' or rank == 'k') then
-                return
-            end
-            local card = Card:new(rank, suit)
-            card.current_x = 40
-            card.current_y = 100
-            card.target_x = 40
-            card.target_y = 100
-            card.face_down = true
-            add(cards, card)
-        end)
-    end)
-    shuffle(cards)
-end
-
 function remove_selected_from_dungeon()
     deli(dungeon, selected_index)
     selected_index = selected_index - 1 < 1 and 1 or selected_index - 1
@@ -141,8 +115,8 @@ end
 
 function reroll_dungeon()
     for i, card in ipairs(dungeon) do
-        card.target_x = 40
-        card.target_y = 100
+        card.target_x = 20
+        card.target_y = 90
         card.delay = (i - 1) * 2
         card.face_down = true
         add(cards, card, 1)
@@ -165,7 +139,7 @@ attack_mode_data = {
 current_state = 'menu'
 menu_state = {
     update = function ()
-        if btn(O) then
+        if btn(🅾️) or btn(❎) then
             create_dungeon()
             current_state = 'dungeon'
         end 
@@ -287,22 +261,8 @@ dungeon_state = {
             kill.current_x = lerp(kill.current_x, weapon_card.current_x, 0.2)
             kill.current_y = lerp(kill.current_y, weapon_card.current_y + 10, 0.2)
         end
-        foreach(discards, function (card)
-            if (card.delay > 0) then
-                card.delay -= 1
-                return
-            end
-            card.current_x = lerp(card.current_x, card.target_x, 0.2)
-            card.current_y = lerp(card.current_y, card.target_y, 0.2)
-        end)
-        foreach(cards, function (card)
-            if (card.delay > 0) then
-                card.delay -= 1
-                return
-            end
-            card.current_x = lerp(card.current_x, card.target_x, 0.2)
-            card.current_y = lerp(card.current_y, card.target_y, 0.2)
-        end)
+        foreach(discards, function (card) card:update() end)
+        foreach(cards, function (card) card:update() end)
     end,
     draw = function ()
         foreach(dungeon, render_card)
@@ -319,6 +279,7 @@ dungeon_state = {
         end
 
         if not rerolled_recently and count(dungeon) == 4 then
+            rectfill(98, 52, 124, 60, 8)
             print("Reroll", 100, 54, reroll_selected and 9 or 5)
         end
 
@@ -335,6 +296,31 @@ states = {
     menu = menu_state,
     dungeon = dungeon_state,
 }
+
+function _init()
+    local ranks = {'j', 'q', 'k', 'a'}
+    local suits = {'c', 'd', 'h', 's'}
+    for v = 2,10 do
+        add(ranks, ''..v)
+    end
+
+    foreach(suits, function (suit)
+        foreach(ranks, function (rank)
+            if (suit == 'd' or suit == 'h') and (rank == 'a' or rank == 'j' or rank == 'q' or rank == 'k') then
+                return
+            end
+            local card = Card:new(rank, suit)
+            card.current_x = 20
+            card.current_y = 90
+            card.target_x = 20
+            card.target_y = 90
+            card.face_down = true
+            add(cards, card)
+        end)
+    end)
+    shuffle(cards)
+end
+
 
 function _update ()
     states[current_state].update()
