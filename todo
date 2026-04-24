@@ -1,0 +1,6 @@
+- Improve hp bar
+- use rrect for cursor
+- if potion used recently, indicate somewhere that drinking the potion wont do anything
+- attack sound effect
+- confirm attack even if no weapon
+- make cursor pop more (animtation)

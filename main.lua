@@ -1,4 +1,3 @@
--- 1. Create the class table
 suit_spr = {
     h = 4, 
     d = 5,
@@ -18,21 +17,6 @@ suit_color = {
     s = black,
     c = black,
 }
-
-cards = {}
-health = 20
-dungeon = {}
-discards = {}
-selected_index = 1
-reroll_selected = false
-
-weapon_card = nil
-kills = {}
-
-cursor_x = -10
-cursor_y = 120
-cursor_target_x = 0
-cursor_target_y = 0
 
 function render_card_callback(card) card:render() end
 
@@ -75,10 +59,8 @@ function create_dungeon()
     end
 end
 
-potion_used = false
-rerolled_recently = false
 function refresh_dungeon()
-    for i = 1,3 do
+    for i = 1,min(3, count(cards)) do
         local card = draw_card()
         card.delay = (i - 1) * 5
         add(dungeon, card, 1)
@@ -185,9 +167,70 @@ attack_mode_choice_state = {
             tl_y + 8 + 2, 9)
     end
 }
+game_finished_state = {
+    init = function ()
+        game_finished_type = nil
+        transition_started = false
+        fade_timer = 0
+        fade_table = {
+            -- step 1: dim
+            {0,0,1,1,2,1,5,6,2,4,9,3,1,1,2,4},
+            -- step 2: dark
+            {0,0,0,0,1,0,1,5,0,2,2,1,0,0,1,2},
+            -- step 3: very dark
+            {0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0},
+            -- step 4: blackout
+            {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
+        }
+    end,
+    update = function ()
+        if (btnp(❎) and not transition_started) then
+            transition_started = true
+            fade_timer = 20
+        end
+        if (transition_started) then
+            if (fade_timer > 0) then
+                fade_timer -= 1
+            end
+            if (fade_timer == 0) then
+                states = {}
+                push_state(menu_state)
+            end
+        end
+    end,
+    draw = function ()
+        local w = 64
+        local h = 40
+        local x0 = 64 - w/2
+        local y0 = 64 - h/2
+        local x1 = x0 + w - 1
+        local y1 = y0 + h - 1
+        
+        rrectfill(x0, y0, w, h, 3, 9)
+        rrect(x0, y0, w, h, 3, 10)
+        local text = game_finished_type == 'win' and "you win!" or "game over"
+        print_centered(text, (y0 + y1 - 15) / 2, 7)
+        print_centered("press x", (y0 + y1 + 10) / 2, 7)
+        if (transition_started) then
+            local step = 4
+            if (fade_timer <= 20 and fade_timer >= 16) then
+                step = 1
+            elseif (fade_timer <= 15 and fade_timer >= 11) then
+                step = 2
+            elseif (fade_timer <= 10 and fade_timer >= 6) then
+                step = 3
+            end
+            local ramp = fade_table[step]
+            for i = 0,15 do -- pico color indexes start at 0
+                pal(i, ramp[i + 1], 1)
+            end
+        end
+    end
+}
 
 menu_state = {
     init = function ()
+        music(-1)
         title = {
             128,
             130,
@@ -221,8 +264,7 @@ menu_state = {
             )
         end
 
-        -- print("scoundrel", 32, 64, 0)
-        print("press any key to begin", 20, 84, 7)
+        print_centered("press any key to begin", 84, 7)
     end
 }
 dungeon_state = {
@@ -236,6 +278,23 @@ dungeon_state = {
             add(ranks, ''..v)
         end
 
+        cards = {}
+        health = 20
+        dungeon = {}
+        discards = {}
+        selected_index = 1
+        reroll_selected = false
+
+        weapon_card = nil
+        kills = {}
+
+        potion_used = false
+        rerolled_recently = false
+
+        cursor_x = -10
+        cursor_y = 120
+        cursor_target_x = 0
+        cursor_target_y = 0
         foreach(suits, function (suit)
             foreach(ranks, function (rank)
                 if (suit == 'd' or suit == 'h') and (rank == 'a' or rank == 'j' or rank == 'q' or rank == 'k') then
@@ -300,7 +359,7 @@ dungeon_state = {
                     push_state(attack_mode_choice_state)
                 else
                     local damage = card.value
-                    health -= damage
+                    health = max(0, health - damage)
 
                     add_to_discard(card)
                     remove_selected_from_dungeon()
@@ -311,8 +370,18 @@ dungeon_state = {
             reroll_dungeon()
         end
 
+        if (health <= 0) then
+            game_finished_type = "loss"
+            push_state(game_finished_state)
+            return
+        elseif (count(dungeon) == 0) then
+            game_finished_type = "win"
+            push_state(game_finished_state)
+            return
+        end
 
-        if (count(dungeon) == 1) then
+
+        if (count(dungeon) == 1 and count(cards) > 0) then
             refresh_dungeon()
         end
 
@@ -327,8 +396,10 @@ dungeon_state = {
             end
         end
 
-        cursor_target_x = card.current_x
-        cursor_target_y = card.current_y
+        if (card) then
+            cursor_target_x = card.current_x
+            cursor_target_y = card.current_y
+        end
 
         cursor_x = lerp(cursor_x, cursor_target_x, 0.5)
         cursor_y = lerp(cursor_y, cursor_target_y, 0.5)
@@ -363,10 +434,10 @@ dungeon_state = {
 
         if not rerolled_recently and count(dungeon) == 4 then
             rectfill(98, 52, 124, 60, 8)
-            print("Reroll", 100, 54, reroll_selected and 9 or 5)
+            print("reroll", 100, 54, reroll_selected and 9 or 5)
         end
 
-        print("HP:"..health, 4, 112, 8)
+        print("hp:"..health, 4, 112, 8)
         rect(4, 120, 4 + 20, 124, 5)
         rectfill(4, 120, 4 + health, 124, 8)
     end
@@ -396,6 +467,7 @@ end
 
 function _draw()
     cls(1)
+    pal()
     draw_background()
 
     for s in all(states) do

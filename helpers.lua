@@ -19,3 +19,8 @@ function get_coords_for_sspr(n)
     local sx, sy = (n % 16) * 8, (n \ 16) * 8
     return sx, sy
 end
+
+function print_centered(s, y, col)
+  local x = 64 - (#s * 2)
+  print(s, x, y, col)
+end
